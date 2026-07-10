@@ -61,69 +61,35 @@ namespace ns3
         return;
     }
 
-    // void FANETAddressHelper::SetBases(std::vector<NetDeviceContainer> clustersDevices, std::vector<NetDeviceContainer> GDTtoCHLinksDevices){
-    //     for (size_t i = 0; i < clustersDevices.size(); i++){
-    //         ipv4.SetBase(network, mask);
-    //         Ipv4InterfaceContainer clusterInterface = ipv4.Assign(clustersDevices[i]);
-    //         clustersInterfaces.push_back(clusterInterface);
-    //         IncrementNetwork();
-    //     }
-
-    //     for (size_t i = 0; i < GDTtoCHLinksDevices.size(); i++){
-    //         ipv4.SetBase(network, mask);
-    //         Ipv4InterfaceContainer linkInterface = ipv4.Assign(GDTtoCHLinksDevices[i]);
-    //         GDTtoCHLinksInterfaces.push_back(linkInterface);  
-    //         IncrementNetwork();
-    //     }
-
-    //     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-    // }
-
-    void FANETAddressHelper::SetBases(NetDeviceContainer GDTDevice, std::vector<NetDeviceContainer> clustersDevices, std::vector<std::vector<NetDeviceContainer>> clustersLinkDevices)
-    {
-
-        // Setup the common interface on GDT that all cluster nodes can use to communicate with the GDT
-        ipv4.SetBase(network, mask);
-        IncrementNetwork();
-        this->GDTInterface = ipv4.Assign(GDTDevice);
-        
-        for (size_t i = 0; i < clustersDevices.size(); i++){
-            // Setup the interfaces for intra-cluster communication
+    void FANETAddressHelper::SetBases(NetDeviceContainer GDTDevice, std::vector<NetDeviceContainer> allIntraClusterNetDevices, std::vector<std::vector<NetDeviceContainer>> allInterClusterNetDevices)
+        {
+            //assign f_0 first
+            //gdt will be 10.1.0.1, CH1 will be 10.1.0.2
             ipv4.SetBase(network, mask);
-            Ipv4InterfaceContainer clusterInterface = ipv4.Assign(clustersDevices[i]);
-            clustersInterfaces.push_back(clusterInterface);
-            StoreClusterBaseIP(network);
-            IncrementNetwork();
+            this->GDTInterface = ipv4.Assign(GDTDevice);
             
-            // For each nodes in the cluster create the interface between the GDT and cluster node devices and disable them
-            std::vector<Ipv4InterfaceContainer> clusterLinkInterfaces;
-            for (size_t j = 0; j < clustersLinkDevices[i].size(); j++)
-            {
-                //ipv4.SetBase(linkNetwork, Ipv4Mask("255.255.255.252"));
-                ipv4.SetBase(network, mask);
-                IncrementNetwork();
-                Ipv4InterfaceContainer linkInterface = ipv4.Assign(clustersLinkDevices[i][j]);
-                
-                Ptr<Ipv4> gdtIpv4Ptr = linkInterface.Get(0).first;
-                Ptr<Ipv4> clusterNodeIpv4Ptr = linkInterface.Get(1).first;
-                uint32_t gdtInterfaceIndex = linkInterface.Get(0).second;
-                uint32_t clusterNodeInterfaceIndex = linkInterface.Get(1).second;
-
-                gdtIpv4Ptr->SetDown(gdtInterfaceIndex);
-                clusterNodeIpv4Ptr->SetDown(clusterNodeInterfaceIndex);
-
-                clusterLinkInterfaces.push_back(linkInterface);
-
-                //address += 4;
-                //linkNetwork = Ipv4Address(address);
+            // Iterate over each cluster
+            for (size_t clusterId = 0; clusterId < allInterClusterNetDevices.size(); clusterId++) {
+                std::vector<Ipv4InterfaceContainer> clusterLinkInterfaces;
+                for (size_t localNodeId = 0; localNodeId < allInterClusterNetDevices[clusterId].size(); localNodeId++) {
+                    Ipv4InterfaceContainer linkInterface = ipv4.Assign(allInterClusterNetDevices[clusterId][localNodeId]);
+                    clusterLinkInterfaces.push_back(linkInterface);
+                }
+                clustersLinkInterfaces.push_back(clusterLinkInterfaces);
             }
 
-            clustersLinkInterfaces.push_back(clusterLinkInterfaces);
-            //IncrementNetwork();
+            // To assign IP address for cluster member devices
+            IncrementNetwork(); //move to the next subnet
+        
+            //then assign Intra-cluster (f_n) subnets 
+            for (size_t clusterId = 0; clusterId < allIntraClusterNetDevices.size(); clusterId++){
+                ipv4.SetBase(network, mask);
+                Ipv4InterfaceContainer clusterInterface = ipv4.Assign(allIntraClusterNetDevices[clusterId]);
+                clustersInterfaces.push_back(clusterInterface);
+                StoreClusterBaseIP(network);
+                IncrementNetwork();
+            }
         }
-
-        Ipv4GlobalRoutingHelper::PopulateRoutingTables();
-    }
 
     void FANETAddressHelper::StoreClusterBaseIP(Ipv4Address addr)
     {

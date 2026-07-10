@@ -1,12 +1,20 @@
 #ifndef CLUSTER_NODE_PROMOTION_APP_H
 #define CLUSTER_NODE_PROMOTION_APP_H
 
-#include "ns3/core-module.h"
-#include "ns3/network-module.h"
-#include "ns3/internet-module.h"
-#include "ns3/applications-module.h"
+#include "ns3/application.h"
+#include "ns3/event-id.h"
+#include "ns3/ptr.h"
+#include "ns3/address.h"
+#include "ns3/socket.h"
+#include "ns3/packet.h"
+#include "ns3/ipv4-address.h"
+#include "ns3/inet-socket-address.h"
+#include "ns3/udp-socket-factory.h"
+#include "ns3/data-rate.h"
+#include "ns3/nstime.h"
 #include "ns3/FANETHeader.h"
 #include "ns3/fanet-application.h"
+#include "ns3/callback.h"
 
 namespace ns3
 {
@@ -41,14 +49,16 @@ namespace ns3
             void EnableDebugLog() override;
 
             uint32_t GetClusterIndex();
-
             Ipv4Address GetClusterBaseIP();
-
             Ipv4Address GetClusterBroadcastIP();
-
             Ipv4Address GetGdtIp();
 
             bool GetCHStatus();
+
+            typedef Callback<void, Ptr<Node>, Ptr<Packet>> CommandReceivedCallback;
+            void SetCommandCallback(CommandReceivedCallback cb);
+            void CommandCallBack(Ptr<Socket> socket);
+            void SetupCommandSocket(uint16_t);
 
         private:
             /// @brief Flag indication if the node is a cluster head
@@ -84,8 +94,8 @@ namespace ns3
 
             void HandleCHPromo(FANETHeader* header, Ptr<Packet> packet, Address from);
 
-
-
+            CommandReceivedCallback m_commandCallback;
+            Ptr<Socket> m_cmdSocket;
     };
 }
 

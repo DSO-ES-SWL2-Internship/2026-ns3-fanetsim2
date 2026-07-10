@@ -1,8 +1,10 @@
 #ifndef FANET_MOBILITY_HELPER_H
 #define FANET_MOBILITY_HELPER_H
 
-#include "ns3/mobility-module.h"
 #include "FANETTopologyHelper.h"
+#include "ns3/mobility-helper.h"
+#include "ns3/position-allocator.h"
+#include "ns3/mobility-model.h"
 
 
 #include <cstdint>

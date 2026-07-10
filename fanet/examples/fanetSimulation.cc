@@ -36,7 +36,7 @@ int main (int argc, char* argv[]){
     
     Ptr<FANETSimulator> simulator = CreateObject<FANETSimulator>();
 
-    simulator->SetupSimulation("config.json");
+    simulator->SetupSimulation("/home/dsointern/projects/intern0-ns3sim/2025-ns3-fanetsim/ns3/src/fanet/examples/config.json");
     simulator->RunSimulation(); 
     
 

@@ -1,8 +1,10 @@
 #ifndef FANET_PLR_H
 #define FANET_PLR_H
 
-#include "ns3/internet-module.h"
 #include "ns3/FANETHeader.h"
+#include "ns3/ipv4-address.h"
+#include "ns3/ipv4-header.h"
+#include "ns3/packet.h"
 
 namespace ns3
 {

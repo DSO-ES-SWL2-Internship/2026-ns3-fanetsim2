@@ -1,10 +1,17 @@
 #ifndef GDT_APP_H
 #define GDT_APP_H
 
-#include "ns3/core-module.h"
-#include "ns3/network-module.h"
-#include "ns3/internet-module.h"
-#include "ns3/applications-module.h"
+#include "ns3/application.h"
+#include "ns3/event-id.h"
+#include "ns3/ptr.h"
+#include "ns3/address.h"
+#include "ns3/socket.h"
+#include "ns3/packet.h"
+#include "ns3/ipv4-address.h"
+#include "ns3/inet-socket-address.h"
+#include "ns3/udp-socket-factory.h"
+#include "ns3/data-rate.h"
+#include "ns3/nstime.h"
 #include <queue>
 
 #include "ns3/fanet-application.h"
@@ -37,11 +44,13 @@ namespace ns3
             
             /// @brief Enable NS_LOG_DEBUG for this component
             void EnableDebugLog() override;
-
+            void SendCommand(Ipv4Address targetIp, uint16_t targetPort, std::string commandStr, Ptr<NetDevice> egressDevice = nullptr);
 
         private:
 
             std::map<uint32_t, uint32_t> m_clusterHeads;
+
+            Ptr<Socket> m_cmdSocket;
 
             /// @brief Starts the application
             virtual void StartApplication() override;

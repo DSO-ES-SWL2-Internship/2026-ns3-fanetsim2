@@ -1,8 +1,11 @@
 #ifndef FANET_ROUTING_HELPER_H
 #define FANET_ROUTING_HELPER_H
 
-#include "ns3/internet-module.h"
 #include "ns3/ipv4-global-routing-helper.h"
+#include "ns3/internet-stack-helper.h"
+#include "ns3/ipv4-routing-helper.h"
+#include "ns3/ipv4-list-routing-helper.h"
+#include "ns3/node-container.h"
 
 namespace ns3
 {
