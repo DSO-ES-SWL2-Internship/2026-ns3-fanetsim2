@@ -3,9 +3,18 @@
 
 // Helper Classes Includes
 #include "ns3/fanet-module.h"
+#include "ns3/tdma-wifi-mac.h"
+#include "ns3/FANETDeviceHelper.h"
 
 namespace ns3 
 {
+    struct TrafficWindow {
+        double startTime; // Time to start the profile
+        double endTime;   // Time to end the profile
+        std::vector<uint32_t> newClusterHeads; // List of new cluster head node IDs for this window
+        std::vector<TrafficProfile> profiles; // Traffic profiles to apply during this duration
+    };
+    
     class FANETSimulator : public Object
     {
         private:
@@ -27,6 +36,11 @@ namespace ns3
             uint32_t cycleDuration;
 
             double simDuration;
+            double m_updateTime;
+            uint32_t m_targetClusterIndex;
+            uint32_t m_targetNodeIndex;
+            uint16_t m_targetPort;
+            std::string m_commandString;
 
             std::unordered_map<std::string, WifiStandard> wifiStandardMap = {
                 {"WIFI_STANDARD_80211a", WIFI_STANDARD_80211a},
@@ -46,6 +60,17 @@ namespace ns3
                 {"DSDV", DSDV},
                 {"DSR", DSR}
             };
+
+            // Track which nodes have applications installed and their current state
+            struct NodeAppState {
+                Ptr<Node> node;
+                ApplicationContainer videoApp;
+                ApplicationContainer highResVideoApp;
+                ApplicationContainer statusApp;
+                ApplicationContainer cmdApp;
+                bool isCurrentlyCH = false;
+            };
+            std::map<uint32_t, NodeAppState> m_nodeApps; // Key = Node ID
 
             // Methods
             
@@ -75,13 +100,30 @@ namespace ns3
             void SetRoutingProtocol();
             void AssignAddress();
             void SetUpNetAnim();
+            void CommandCallBack(Ptr<Socket> socket); // Callback method to handle the reception of a dynamic command at the drone
+            void ExecuteProfileSwap(std::vector<TrafficProfile> profilesToApply, std::vector<uint32_t> newCHs, std::string stageName);
+            void PrintTdmaGridMap(Ptr<Node> node, Ptr<WifiNetDevice> wifiDev, Ptr<TdmaWifiMac> tdmaMac);
+            void HandleCommand(Ptr<Node> rxNode, Ptr<Packet> packet);
+            void ConfigureInterfaceMetrics(); 
+            Ptr<WifiNetDevice> getWifiNetDevice(uint32_t nodeId, bool is_inter_else_intra);
 
+            std::vector<TrafficProfile> m_currentActiveProfiles; //To keep track of currently active profiles for logging purposes
+            void PeriodicTopologySync();//Method to periodically synchronize the topology and print the TDMA grid map for each node
+            std::deque<ClusterMacConfig> m_intraClusterConfigs; 
+            std::deque<ClusterMacConfig> m_interClusterConfigs;
+            std::deque<ClusterMacConfig> m_chIntraConfigs;
+            std::vector<uint32_t> m_initialCHs; // To keep track of the initial cluster heads for logging purposes
+            
         public:
             static TypeId GetTypeId();
             /// @brief Create a FANET Simulator
             FANETSimulator();
             /// @brief Destroy the FANET Simulator
             ~FANETSimulator();
+
+            std::vector<TrafficProfile> m_trafficProfiles;
+            std::vector<TrafficProfile> m_updateProfiles;
+            std::vector<TrafficWindow> m_scheduledtrafficWindows;
 
             /// @brief Helper for managing FANET topology.
             Ptr<FANETTopologyHelper> fanet;
@@ -113,6 +155,7 @@ namespace ns3
             void RunSimulation();
 
             void SetupSimulation(std::string jsonFilePath);
+            void UpdateNodeApplications(Ptr<Node> node, bool isNowCH);
 
     };
 }

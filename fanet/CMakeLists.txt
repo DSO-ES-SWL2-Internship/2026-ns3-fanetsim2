@@ -18,6 +18,7 @@ build_lib(
     model/applications/gdt-app/gdt-CH-promo.cc
     model/FANETHeader.cc
     thirdparty/tdma/tdma-wifi-mac.cc
+    thirdparty/tdma/dtdma-queue-header.cc
   HEADER_FILES
     helper/FANETAddressHelper.h
     helper/FANETAnimationHelper.h
@@ -34,8 +35,10 @@ build_lib(
     model/applications/cluster-node-app/cluster-node-app.h
     model/applications/gdt-app/gdt-app.h
     model/FANETHeader.h
+    thirdparty/tdma/dtdma-queue-header.h
     thirdparty/tdma/tdma-wifi-mac.h
     thirdparty/json.hpp
+    thirdparty/tdma/dtdma-queue-header.h
   LIBRARIES_TO_LINK 
     ${libinternet}
     ${libstats}

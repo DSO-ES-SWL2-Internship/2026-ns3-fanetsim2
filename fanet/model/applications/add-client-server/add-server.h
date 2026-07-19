@@ -1,10 +1,16 @@
 #ifndef ADD_SERVER_H
 #define ADD_SERVER_H
 
-#include "ns3/core-module.h"
-#include "ns3/network-module.h"
-#include "ns3/internet-module.h"
-#include "ns3/applications-module.h"
+#include "ns3/application.h"
+#include "ns3/event-id.h"
+#include "ns3/ptr.h"
+#include "ns3/address.h"
+#include "ns3/socket.h"
+#include "ns3/packet.h"
+#include "ns3/ipv4-address.h"
+#include "ns3/inet-socket-address.h"
+#include "ns3/udp-socket-factory.h"
+#include "ns3/data-rate.h"
 #include "ns3/random-variable-stream.h"
 #include <queue>
 

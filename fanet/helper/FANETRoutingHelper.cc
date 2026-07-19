@@ -1,9 +1,12 @@
 #include "FANETRoutingHelper.h"
-#include "ns3/aodv-module.h"
-#include "ns3/dsdv-module.h"
-#include "ns3/olsr-module.h"
-#include "ns3/dsr-module.h"
 #include "ns3/ff-mac-common.h"
+#include "ns3/aodv-helper.h"
+#include "ns3/dsdv-helper.h"
+#include "ns3/olsr-helper.h"
+#include "ns3/dsr-helper.h"
+#include "ns3/dsr-main-helper.h"
+#include "ns3/log.h"
+#include "ns3/string.h"
 
 namespace ns3
 {

@@ -1,7 +1,7 @@
 #ifndef FANET_ANIMATION_HELPER_H
 #define FANET_ANIMATION_HELPER_H
 
-#include "ns3/netanim-module.h"
+#include "ns3/animation-interface.h"
 #include "FANETTopologyHelper.h"
 
 #include <cstdint>
