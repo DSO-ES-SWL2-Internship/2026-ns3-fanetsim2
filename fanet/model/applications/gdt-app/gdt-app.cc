@@ -76,11 +76,12 @@ namespace ns3
 
             m_cmdSocket->SetIpTos(0x11);
             
-            //Apply SO_BINDTODEVICE once
-            if (egressDevice != nullptr) {
-                m_cmdSocket->BindToNetDevice(egressDevice);
-                NS_LOG_INFO("Command socket bound to physical interface ID: " << egressDevice->GetIfIndex());
-            }
+            // //Apply SO_BINDTODEVICE once
+            // if (egressDevice != nullptr) {
+            //     m_cmdSocket->BindToNetDevice(egressDevice);
+            //     NS_LOG_INFO("Command socket bound to physical interface ID: " << egressDevice->GetIfIndex());
+            // }
+            m_cmdSocket->Bind();
             std::cout << "[GDT DISPATCH] Time: " << Simulator::Now().As(Time::S) << std::endl;
             std::cout << "[GDT DISPATCH] GDT fired command [" << commandStr << "] directly to IP: " << targetIp << std::endl;
         }
