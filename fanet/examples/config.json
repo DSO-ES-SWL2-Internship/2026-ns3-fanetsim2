@@ -4,7 +4,7 @@
     "cycleDuration": 200,
     "filename": "hello.xml",
     "simulationDuration": 40.0,
-    "initialClusterHeads": [2, 7],
+    "initialClusterHeads": [2, 6],
     "fanetDevices": {
       "clusterWifiStandard": "WIFI_STANDARD_80211n",
       "clusterWifiChannelPropagationDelay": "ns3::ConstantSpeedPropagationDelayModel",
@@ -26,12 +26,24 @@
         {
           "startTime": 5.0,
           "endTime": 9.0,
-          "newClusterHeads": [2, 7],
+          "newClusterHeads": [2, 6],
           "profiles":
           [
-              {"type": "Status2", "priority": 1, "bandwidthKb": 3},
+              {"type": "Status1", "priority": 2, "bandwidthKb": 1},
               {"type": "Cmd1", "priority": 3, "bandwidthKb": 1},
-              {"type": "Video_LOW_RES", "priority": 55, "bandwidthKb": 6}
+              {"type": "Video_LOW_RES", "priority": 5, "bandwidthKb": 6}
+          ]
+        },
+        {
+          "startTime": 11.0,
+          "endTime": 20.0,
+          "newClusterHeads": [2, 6],
+          "profiles":
+          [
+              {"type": "Status1", "priority": 2, "bandwidthKb": 1},
+              {"type": "Cmd2", "priority": 2, "bandwidthKb": 3},
+              {"type": "Cmd3", "priority": 1, "bandwidthKb": 6},
+              {"type": "Video_HIGH_RES", "priority": 3, "bandwidthKb": 12}
           ]
         }
     ],

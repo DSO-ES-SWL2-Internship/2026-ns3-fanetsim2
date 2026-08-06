@@ -68,6 +68,7 @@ namespace ns3
         NS_LOG_FUNCTION(this);
         UpdateSlotDuration(); // Initialize slot duration
         SetTypeOfStation(ADHOC_STA);
+        m_slotHistory.resize(72, "IDLE");
     }
 
     TdmaWifiMac::~TdmaWifiMac()
@@ -191,16 +192,6 @@ namespace ns3
         hdr.SetType(WIFI_MAC_DATA);
 #endif
 
-        // Ptr<WifiMpdu> modifiedMpdu = Create<WifiMpdu>(mpdu->GetPacket(), hdr);
-        // // Handle bypass for small/control packets (AODV routing broadcasts, ARP requests)
-        // if (to.IsBroadcast() || tid == 0) {
-        //     tid = 0;
-        //     if (GetQosSupported()) {
-        //         hdr.SetType(WIFI_MAC_QOSDATA);
-        //         hdr.SetQosTid(tid);
-        //     }
-        // }
-
         // Extract the ToS value from the IPv4 header
         uint8_t tos = 0;
         Ptr<Packet> packetCopy = mpdu->GetPacket()->Copy();
@@ -213,32 +204,23 @@ namespace ns3
             }
         }
 
-        // Traffic flow trace
-        std::string role = m_isClusterHead ? "CH" : "CM";
-        std::string iface = m_isInterCluster ? "Backbone (5GHz)" : "Local (2.4GHz)";
-        
-        std::cout << "[FLOW TRACE - TX] Node: " << GetDevice()->GetNode()->GetId() 
-                    << " (" << role << " | " << iface << ") " 
-                    << "ToS: 0x" << std::hex << (int)tos << std::dec << " | Dest: " << to 
-                    << " | Size: " << mpdu->GetPacket()->GetSize() << std::endl;
-
         // Calculate current total TDMA load
         uint16_t myTotalQueue = m_pri5_lowResQueue.size();
-
-        bool isRelayPacket = false;
+        [[maybe_unused]] bool isRelayPacket = false;
         Mac48Address finalDestination = to;
 
-        // Cooperative Relay Logic (Only for Video Traffic: TIDs 5 and 7)
-        uint16_t panicThreshold = 10; // Hardcode a safe threshold guarantee
-        if (!m_isClusterHead && !m_isInterCluster && myTotalQueue >= panicThreshold)
+        // Cooperative Relay Logic
+        uint16_t panicThreshold = 1000; 
+        
+        // Only CH do Coop-MAC offloading
+        if (m_isClusterHead && myTotalQueue >= panicThreshold)
         {
             Mac48Address bestHelper = Mac48Address::GetBroadcast();
 
             // Find all neighbours that has available bandwidth (Queue < Offload Threshold)
             std::vector<Mac48Address> availableHelpers;
             for (auto const& neighbour : m_neighbourQueueSizes) {
-                // Ensure we don't offload to the original destination (CH) or Broadcast,
-                // and verify the neighbor is completely idle/ready to help
+                // Ensure we don't offload to the original destination or Broadcast
                 if (neighbour.first != to && !neighbour.first.IsBroadcast() && neighbour.second < panicThreshold) { 
                     availableHelpers.push_back(neighbour.first);
                 }
@@ -254,7 +236,7 @@ namespace ns3
                 IndexMap[myNodeId]++;
             }
             
-            // If we found a valid helper, alter the MAC routing
+            // If CH found a valid helper, alter the MAC routing
             if (bestHelper != Mac48Address::GetBroadcast()) {
                 std::cout << "[COOP-MAC] Node " << GetDevice()->GetNode()->GetId() 
                           << " is OVERLOADED (Q=" << myTotalQueue 
@@ -269,11 +251,11 @@ namespace ns3
 
         // Attach the Cooperative MAC Header to the packet
         Ptr<Packet> mutablePacket = mpdu->GetPacket()->Copy();
-        DtdmaQueueHeader qHeader;
-        qHeader.SetQueueSize(myTotalQueue);
-        qHeader.SetIsRelay(isRelayPacket);
-        qHeader.SetFinalDest(finalDestination);
-        mutablePacket->AddHeader(qHeader);
+        DtdmaQueueHeader qHeader;              // Create a new instance of the custom header
+        qHeader.SetQueueSize(myTotalQueue);    // Set the current queue size for this node
+        qHeader.SetIsRelay(isRelayPacket);     // Indicate if this packet is being relayed
+        qHeader.SetFinalDest(finalDestination);// Set the final destination to the original CH address
+        mutablePacket->AddHeader(qHeader);     // Add the custom header to the packet
 
         // Rebuild the MPDU with the new header
         Ptr<WifiMpdu> finalMpdu = Create<WifiMpdu>(mutablePacket, hdr);
@@ -282,21 +264,58 @@ namespace ns3
         TdmaBufferItem item;
         item.mpdu = finalMpdu;
 
-        // Push the item into the appropriate queue based on the TID
-        // if (tid == 1) { m_pri1_status2Queue.push(item); }
-        // else if (tid == 2) { m_pri1_cmd3Queue.push(item); }
-        // else if (tid == 3) { m_pri2_status1Queue.push(item); }
-        // else if (tid == 4) { m_pri2_cmd2Queue.push(item); }
-        // else if (tid == 5) { m_pri3_highResQueue.push(item); }
-        // else if (tid == 6) { m_pri3_cmd1Queue.push(item); }
-        // else if (tid == 7) { m_pri5_lowResQueue.push(item); }
-        // m_pri1_status2Queue.push(item); 
-        // m_pri1_cmd3Queue.push(item);
-        // m_pri2_status1Queue.push(item); 
-        // m_pri2_cmd2Queue.push(item);
-        // m_pri3_highResQueue.push(item); 
-        // m_pri3_cmd1Queue.push(item);
-        m_pri5_lowResQueue.push(item);
+        // Handle bypass for control packets (AODV routing broadcasts, ARP requests)
+        if (to.IsBroadcast() || tos == 0x00 || tos == 0xc0) 
+        {
+            if (GetQosSupported()) {
+                Ptr<QosTxop> qosTxop = GetQosTxop(7);
+                if (qosTxop != nullptr) {
+                    qosTxop->Queue(finalMpdu); // Bypasses TDMA and transmits instantly
+                    return; 
+                }
+            }
+            Ptr<Txop> txop = GetTxop();
+            if (txop != nullptr) {
+                txop->Queue(finalMpdu); // Bypasses TDMA and transmits instantly
+            }
+            return;
+        }
+
+        // Traffic flow trace
+        std::string role = m_isClusterHead ? "CH" : "CM";
+        std::string iface = m_isInterCluster ? "Backbone (5GHz)" : "Local (2.4GHz)";
+        std::cout << "[FLOW TRACE - TX] Node: " << GetDevice()->GetNode()->GetId() 
+                    << " (" << role << " | " << iface << ") " 
+                    << "ToS: 0x" << std::hex << (int)tos << std::dec << " | Dest: " << to 
+                    << " | Size: " << mpdu->GetPacket()->GetSize() << std::endl;
+
+        // Drop packet to prevent bufferbloat 
+        if (tos == 0x50 && m_pri5_lowResQueue.size() >= m_maxQueueSize) {
+            std::cout << "[DROP] Video Queue FULL on Node " << GetDevice()->GetNode()->GetId() << std::endl;
+            return; 
+        }
+        if (tos == 0x20 && m_pri2_status1Queue.size() >= m_maxQueueSize) {
+            std::cout << "[DROP] Status Queue FULL on Node " << GetDevice()->GetNode()->GetId() << std::endl;
+            return; 
+        }
+
+        // Enqueue based on ToS value
+        if (tos == 0x10) {          m_pri1_status2Queue.push(item);  // Status 2
+        } else if (tos == 0x11) {   m_pri1_cmd3Queue.push(item);     // Command 3
+        } else if (tos == 0x20) {   m_pri2_status1Queue.push(item);  // Status 1
+        } else if (tos == 0x21) {   m_pri2_cmd2Queue.push(item);     // Command 2
+        } else if (tos == 0x30) {   m_pri3_highResQueue.push(item);  // High-Res Video
+        } else if (tos == 0x31) {   m_pri3_cmd1Queue.push(item);     // Command 1
+        } else { m_pri5_lowResQueue.push(item); // Default to Low-Res Video for any other ToS values
+        }
+    }
+
+    // This method updates the slot duration whenever the number of slots or cycle duration changes.
+    void TdmaWifiMac::UpdateSlotDuration()
+    {
+        NS_LOG_FUNCTION(this);
+        m_slotDuration = m_cycleDuration / m_numSlots;
+        NS_LOG_DEBUG("Slot duration updated to " << m_slotDuration.As(Time::MS));
     }
 
     // Set to always return true meaning that this MAC layer allows packet forwarding to any MAC address
@@ -310,87 +329,100 @@ namespace ns3
     {
         NS_LOG_FUNCTION(this);
 
-        // Check if it's the node's slot
-        m_isMySlot = (m_currentSlot == m_assignedSlot);
+        m_currentSlot = (m_currentSlot + 1) % 72; // Force to 72 slots
 
-        // Schedule the next slot
-        m_tdmaEvent = Simulator::Schedule(m_slotDuration, &TdmaWifiMac::TdmaScheduleNextSlot, this);
+        m_isMySlot = false;
+        std::string scheduledTraffic = "IDLE";
 
-        // If it's the node's slot, start transmitting
-        if (m_isMySlot)
+        // Check the global matrix for this exact moment in time
+        if (m_currentSlot < m_allocationTable.size()) 
         {
-            TdmaTransmit();
+            MiniSlot currentSlotData = m_allocationTable[m_currentSlot];
+
+            // "Transmit at this TIME... based on who I am"
+            if (currentSlotData.isOccupied && currentSlotData.ownerNodeId == m_assignedSlot) 
+            {
+                m_isMySlot = true;
+                // ""...based on the type of slot it is"
+                scheduledTraffic = currentSlotData.trafficType; 
+            }
         }
 
-        // Increment the slot counter
-        m_currentSlot = (m_currentSlot + 1) % m_numSlots;
+        // Trigger transmission if the slot strictly belongs to this node
+        if (m_isMySlot && scheduledTraffic != "IDLE") 
+        {
+            TdmaTransmit(scheduledTraffic); // Pass the strict traffic rule to the hardware
+        }
+
+        // Schedule the next tick
+        m_tdmaEvent = Simulator::Schedule(m_slotDuration, &TdmaWifiMac::TdmaScheduleNextSlot, this);
     }
 
-    // This method transmits all packets in the buffer during the node's assigned slot.
-    // It checks for slot overruns to ensure that the node does not exceed its allocated time.
-    void TdmaWifiMac::TdmaTransmit()
+    // This method transmits one packet from the appropriate queue based on the scheduled traffic type
+    void TdmaWifiMac::TdmaTransmit(std::string scheduledTraffic)
     {
-        Time slotStartTime = Simulator::Now();
+        // Check if the slot actually demands a traffic type or is IDLE
+        if (scheduledTraffic == "IDLE")
+        {
+            return;
+        }
+
+        std::queue<TdmaBufferItem>* targetQueue = nullptr;
+        std::string actualTrafficSent = scheduledTraffic;
+
+        if (scheduledTraffic.find("Status") != std::string::npos) {
+            if (!m_pri1_status2Queue.empty()) targetQueue = &m_pri1_status2Queue;
+            else targetQueue = &m_pri2_status1Queue;
+        } 
+        else if (scheduledTraffic.find("Cmd") != std::string::npos) {
+            if (!m_pri1_cmd3Queue.empty()) targetQueue = &m_pri1_cmd3Queue;
+            else if (!m_pri2_cmd2Queue.empty()) targetQueue = &m_pri2_cmd2Queue;
+            else targetQueue = &m_pri3_cmd1Queue;
+        } 
+        else if (scheduledTraffic.find("Video") != std::string::npos) {
+            if (!m_pri3_highResQueue.empty()) targetQueue = &m_pri3_highResQueue;
+            else targetQueue = &m_pri5_lowResQueue;
+        } 
+        else {
+            targetQueue = &m_pri5_lowResQueue; // Fallback
+        }
         
-        //Evaluate how many packets of each traffic type we can send based on the allocation table for this slot
-        // uint32_t status1Quota = 0, status2Quota = 0;
-        // uint32_t cmd1Quota = 0, cmd2Quota = 0, cmd3Quota = 0;
-        // uint32_t lowResQuota = 0, highResQuota = 0;
-        //
-        uint32_t totalQuota = m_allocationTable.size();
+        if (m_currentSlot < m_slotHistory.size()) {
+            m_slotHistory[m_currentSlot] = actualTrafficSent;
+        }
 
-        //Lambda function to decrease a specific queue safely
-        auto drainQueue = [&](std::queue<TdmaBufferItem>& queue, uint32_t& quota, uint8_t destTid) {
-            while (!queue.empty() && quota > 0)
-            {
-                if ((Simulator::Now() - slotStartTime) >= m_slotDuration)
-                {
-                    NS_LOG_WARN("Slot overrun detected... Stopping transmission.");
-                    return; 
-                }
-                TdmaBufferItem item = queue.front();
-                Ptr<WifiMpdu> mpdu = item.mpdu;
+        // Prevent transmission if the targeted queue is empty
+        if (targetQueue->empty()) {
+            return;
+        }
 
-                if (GetQosSupported())
-                {
-                    // Directly use destTid instead of calculating it
-                    GetQosTxop(destTid)->Queue(mpdu);
-                }
-                else
-                {
-                    GetTxop()->Queue(mpdu);
-                }
-                NS_LOG_FUNCTION(this << "transmit-" << m_name);
-                queue.pop();
-                quota--; 
+        // Pull one packet per slot
+        TdmaBufferItem item = targetQueue->front();
+        targetQueue->pop(); 
+
+        if (item.mpdu == nullptr) {
+            return;
+        }
+
+        Ptr<WifiMpdu> mpdu = item.mpdu;
+
+        if (GetQosSupported()) {
+            Ptr<QosTxop> qosTxop = GetQosTxop(7);
+            if (qosTxop != nullptr) {
+                qosTxop->Queue(mpdu);
+            } else {
+                return; // Hardware not ready
             }
-        };
+        } else {
+            Ptr<Txop> txop = GetTxop();
+            if (txop != nullptr) {
+                txop->Queue(mpdu);
+            } else {
+                return; // Hardware not ready
+            }
+        }
 
-        // Pass the explicit 802.11e TIDs (0-3) to ensure GetQosTxop() returns a valid pointer
-        // Priority 1/2 traffic -> Maps to Access Category BK/BE/VI
-        // Priority 1
-        // drainQueue(m_pri1_status2Queue, status2Quota, 3); // Map to AC_VO (Highest priority hardware queue)
-        // drainQueue(m_pri1_cmd3Queue, cmd3Quota, 3);       // Map to AC_VO
-        
-        // // Priority 2
-        // drainQueue(m_pri2_status1Queue, status1Quota, 2); // Map to AC_VI (Video queue)
-        // drainQueue(m_pri2_cmd2Queue, cmd2Quota, 2);       // Map to AC_VI
-        
-        // // Priority 3
-        // drainQueue(m_pri3_highResQueue, highResQuota, 0); // Map to AC_BE (Best effort)
-        // drainQueue(m_pri3_cmd1Queue, cmd1Quota, 0);       // Map to AC_BE
-        
-        // // Priority 5
-        // drainQueue(m_pri5_lowResQueue, lowResQuota, 1);   // Map to AC_BK (Background)
-        drainQueue(m_pri5_lowResQueue, totalQuota, 7);   
-    }
-
-    // This method updates the slot duration whenever the number of slots or cycle duration changes.
-    void TdmaWifiMac::UpdateSlotDuration()
-    {
-        NS_LOG_FUNCTION(this);
-        m_slotDuration = m_cycleDuration / m_numSlots;
-        NS_LOG_DEBUG("Slot duration updated to " << m_slotDuration.As(Time::MS));
+        std::cout << "[TDMA TX] Node " << GetDevice()->GetNode()->GetId() << " transmitted 1 packet for slot type: [" << scheduledTraffic << "]" << std::endl;
     }
 
     // This method is called when a packet is received.
@@ -402,54 +434,86 @@ namespace ns3
             return;
         }
         
-        //Reset the table to 12 empty slots
-        m_allocationTable.clear();
-        m_allocationTable.resize(m_clusterConfig->totalMiniSlots, {false, ""});
+        std::string mySsid = GetSsid().PeekString(); // Get the SSID of this node
+        m_isInterCluster = (mySsid.find("InterCluster") != std::string::npos); // Determine if this node is part of the inter-cluster network based on SSID
 
-        std::vector<TrafficProfile> allowedProfiles;
-        //Filter for CH
-        for (const auto& p : m_clusterConfig->trafficProfiles) {
-            if (m_isClusterHead && !m_isInterCluster) {
-                if (p.type.find("Cmd") != std::string::npos) {
-                    //Case 1: CH local antenna, pure relay for Cmds
-                    allowedProfiles.push_back(p);
+        //Reset the table to 72 empty slots
+        m_allocationTable.clear();
+        m_allocationTable.resize(72, {false, "IDLE", 0});
+
+        // Lambda function to fill a row of the allocation table with the traffic profile from the JSON config
+        auto fillRowWithConfig = [&](int startSlot, int endSlot, uint32_t nodeId) {
+            
+            // Safety fallback if JSON is empty
+            if (m_clusterConfig->trafficProfiles.empty()) {
+                for (int i = startSlot; i <= endSlot; i++) m_allocationTable[i] = {true, "IDLE", nodeId};
+                return;
+            }
+
+            uint32_t profileIndex = 0;
+            for (int i = startSlot; i <= endSlot; i++) {
+                // Fetch the dynamic application name from the JSON config
+                std::string currentProfile = m_clusterConfig->trafficProfiles[profileIndex].type; 
+                
+                m_allocationTable[i] = {true, currentProfile, nodeId};
+                
+                // Distributes 12 slots evenly across all apps in config
+                profileIndex = (profileIndex + 1) % m_clusterConfig->trafficProfiles.size();
+            }
+        };
+
+        // INTER-CLUSTER (5GHz Backbone - 0.2K per slot)
+        if (m_isInterCluster) 
+        {
+            if (m_assignedSlot == 0) // GDT
+            {
+                // GDT fills rows 2 and 4
+                fillRowWithConfig(12, 23, m_assignedSlot);
+                fillRowWithConfig(36, 47, m_assignedSlot);
+            } 
+            else if (m_isClusterHead) // ICluster Head
+            {
+                bool isCH1 = (m_assignedSlot >= 1 && m_assignedSlot <= 4); // Cluster 0
+                bool isCH2 = (m_assignedSlot >= 5 && m_assignedSlot <= 8); // Cluster 1
+
+                if (isCH1) {
+                    // CH1 fills rows 1 and 5
+                    fillRowWithConfig(0, 11, m_assignedSlot);
+                    fillRowWithConfig(48, 59, m_assignedSlot);
+                } 
+                else if (isCH2) {
+                    // CH2 fills rows 3 and 6
+                    fillRowWithConfig(24, 35, m_assignedSlot);
+                    fillRowWithConfig(60, 71, m_assignedSlot);
                 }
-            } else if(m_isClusterHead && m_isInterCluster) {
-                //Case 2: CH Backbone antenna, full relay
-                allowedProfiles.push_back(p);
-            } else {
-                // All other cases (CM local OR CH backbone): Allow everything
-                allowedProfiles.push_back(p);
             }
         }
-
-        //
-        uint32_t slotsAvailable = m_clusterConfig->totalMiniSlots;
-        //Loop through the JSON profiles (already sorted highest priority first)
-        for (const auto& profile : allowedProfiles) 
+        // INTRA-CLUSTER (2.4GHz Local - 0.1K per slot)
+        else 
         {
-            //Calculate how many mini-slots this traffic needs (e.g., 0.6K / 0.1 = 6 slots)
-            uint32_t slotsNeeded = std::ceil(static_cast<double>(profile.bandwidthKb / m_kbPerMiniSlot));
-            
-            //If we don't have enough slots left, it gets whatever is remaining (e.g., if only 4 slots left but needs 6, it gets 4 and is marked as partially allocated)
-            uint32_t slotsToAllocate = std::min(slotsNeeded, slotsAvailable);
-            
-            //Fill the slots in the table accordingly with the traffic type and mark them as occupied
-            for (uint32_t i = 0; i < slotsToAllocate; i++) {
-                // Find the next available empty slot
-                for (auto& slot : m_allocationTable) {
-                    if (!slot.isOccupied) {
-                        slot.isOccupied = true;
-                        slot.trafficType = profile.type;
-                        slotsAvailable--;
-                        break;
-                    }
+            if (m_isClusterHead) // CH broadcasting down to CMs
+            {
+                // CH fills rows 2, 4, 6
+                fillRowWithConfig(12, 23, m_assignedSlot);
+                fillRowWithConfig(36, 47, m_assignedSlot);
+                fillRowWithConfig(60, 71, m_assignedSlot);
+            } 
+            else // CM transmitting up to the CH
+            {
+                uint32_t startSlot = 0;
+                
+                if (m_assignedSlot == 1 || m_assignedSlot == 5) {
+                    startSlot = 0;  // Row 1
+                } 
+                else if (m_assignedSlot == 3 || m_assignedSlot == 7) {
+                    startSlot = 24; // Row 3
+                } 
+                else if (m_assignedSlot == 4 || m_assignedSlot == 8) {
+                    startSlot = 48; // Row 5
                 }
-            }
-
-            // If the table is full, stop allocating. Lower priorities get dropped.
-            if (slotsAvailable == 0) {
-                break; 
+                
+                // CM fills its 12-slot row
+                fillRowWithConfig(startSlot, startSlot + 11, m_assignedSlot);
             }
         }
     }
@@ -521,58 +585,19 @@ namespace ns3
                     std::cout << "[COOP-MAC] Node " << GetDevice()->GetNode()->GetId() 
                             << " intercepting Offloaded packet from " << from 
                             << ". Re-queuing for CH: " << qHeader.GetFinalDest() << std::endl;
-
-                    // [[maybe_unused]]uint8_t tos = 0;
-                    // Ptr<Packet> packetCopy = packet->Copy();
-                    // LlcSnapHeader llc;
-                    // if (packetCopy->RemoveHeader(llc)) {
-                    //     if (llc.GetType() == 0x0800) {
-                    //         Ipv4Header ipv4Hdr;
-                    //         packetCopy->PeekHeader(ipv4Hdr);
-                    //         tos = ipv4Hdr.GetTos();
-
-                    // [[maybe_unused]]uint8_t tid = 0;
-                    // if (tos == 0x10) { tid = 1; } 
-                    // else if (tos == 0x11) { tid = 2; }
-                    // else if (tos == 0x20) { tid = 3; } 
-                    // else if (tos == 0x21) { tid = 4; }
-                    // else if (tos == 0x30) { tid = 5; } 
-                    // else if (tos == 0x31) { tid = 6; }
-                    // else if (tos == 0x50) { tid = 7; }
-
-                    qHeader.SetIsRelay(false); // Reset the relay flag to avoid loops
-                    packet->AddHeader(qHeader); // Re-add the modified header
-
-                    WifiMacHeader relayHdr = *hdr;
-                    relayHdr.SetAddr1(qHeader.GetFinalDest()); 
-                    relayHdr.SetAddr2(GetAddress());           
-                    Ptr<WifiMpdu> cleanMpdu = Create<WifiMpdu>(packet, relayHdr);
-
-                    TdmaBufferItem item;
-                    item.mpdu = cleanMpdu;
-                
-                    // if (tid == 1) { m_pri1_status2Queue.push(item); }
-                    // else if (tid == 2) { m_pri1_cmd3Queue.push(item); }
-                    // else if (tid == 3) { m_pri2_status1Queue.push(item); }
-                    // else if (tid == 4) { m_pri2_cmd2Queue.push(item); }
-                    // else if (tid == 5) { m_pri3_highResQueue.push(item); }
-                    // else if (tid == 6) { m_pri3_cmd1Queue.push(item); }
-                    // else if (tid == 7) { m_pri5_lowResQueue.push(item); }
-                    m_pri5_lowResQueue.push(item);
-                    return;
                 }
             }
 
+            // Discard packets that are not intended for this node (except for broadcast)
             if (to != GetAddress() && !to.IsBroadcast()) {
                 return;
             }
 
             // Forward the clean packet to the higher layers
-            //Ptr<WifiMpdu> cleanMpdu = Create<WifiMpdu>(cleanPacket, *hdr);
             ForwardUp(packet, from, to);
             return;
         }
-            // if not a data packet, it will be processed by the base class
+        // if not a data packet, it will be processed by the base class
         WifiMac::Receive(mpdu, linkId);
     }
 
@@ -595,6 +620,12 @@ namespace ns3
         // Return the traffic type if occupied, otherwise return "IDLE"
         return m_allocationTable[slotId].isOccupied ? m_allocationTable[slotId].trafficType : "IDLE";
     }
+    
+    std::string TdmaWifiMac::GetSlotHistory(uint32_t slotId) const
+    {
+        if (slotId >= m_slotHistory.size()) {
+            return "IDLE";
+        }
+        return m_slotHistory[slotId];
+    }
 }
-
-

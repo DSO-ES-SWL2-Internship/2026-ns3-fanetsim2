@@ -244,7 +244,7 @@ namespace ns3
                     {
                         // Force IP layer to slice application packets to 84 bytes to avoid fragmentation at the MAC layer
                         // 84 bytes fragments (64 payload + 20 IP header) are the maximum size that can be transmitted in a single TDMA mini-slot
-                        dev->SetMtu(84);
+                        dev->SetMtu(120);
 
                         std::string ssid = wifiDev->GetMac()->GetSsid().PeekString();
 
@@ -352,17 +352,27 @@ namespace ns3
         // Initialize the TDMA MAC configurations for each cluster
         for (size_t i = 0; i < actualClusters; i++)
         {
-            // CM - Full traffic allowed
-            m_intraClusterConfigs[i].trafficProfiles = this->m_trafficProfiles;
-
-            // CH Local - Cmd relay only
-            std::vector<TrafficProfile> chLocalProfiles;
-            for (const auto &tp : this->m_trafficProfiles)
-            {
-                if (tp.type.find("Cmd") != std::string::npos)
-                    chLocalProfiles.push_back(tp);
+            // CM - Full traffic allowed except for commands
+            //m_intraClusterConfigs[i].trafficProfiles = this->m_trafficProfiles;
+            // std::vector<ns3::TrafficProfile> localClusterProfiles;
+            // for (const auto &tp : this->m_trafficProfiles) {
+            //     Only give the CMs profiles that are NOT commands
+            //     if (tp.type.find("Cmd") == std::string::npos) {
+            //         cmProfiles.push_back(tp);
+            //     }
+            // }
+            // m_intraClusterConfigs[i].trafficProfiles = cmProfiles;
+            
+            std::vector<ns3::TrafficProfile> localClusterProfiles;
+            for (const auto &tp : this->m_trafficProfiles) {
+                localClusterProfiles.push_back(tp);
             }
-            m_chIntraConfigs[i].trafficProfiles = chLocalProfiles;
+
+            // CM Local
+            m_intraClusterConfigs[i].trafficProfiles = localClusterProfiles;
+
+            // CH Local
+            m_chIntraConfigs[i].trafficProfiles = localClusterProfiles;
             m_chIntraConfigs[i].kbPerMiniSlot = 1;
 
             // CH Backbone - Aggregated Traffic
@@ -465,39 +475,6 @@ namespace ns3
                 }
                 this->UpdateNodeApplications(node, isCH);
             }
-
-            // For GDT to know how to reach subnets
-            // Ptr<Ipv4> gdtIpv4 = this->fanet->GDTNode.Get(0)->GetObject<Ipv4>();
-            // Ptr<Ipv4StaticRouting> gdtStatic = Ipv4RoutingHelper::GetRouting<Ipv4StaticRouting>(gdtIpv4->GetRoutingProtocol());
-            // if (gdtStatic) {
-            //     for (size_t i = 0; i < this->fanet->clusters.size(); i++) {
-            //         std::stringstream subnetSs;
-            //         subnetSs << "10.1." << (i + 1) << ".0";
-            //         Ipv4Address clusterSubnet(subnetSs.str().c_str());
-            //         Ipv4Mask clusterMask("255.255.255.0");
-
-            //         if (this->fanet->CHNodes.size() > i && this->fanet->CHNodes[i]) {
-            //             Ptr<Node> chNode = this->fanet->CHNodes[i];
-            //             Ptr<Ipv4> chIpv4 = chNode->GetObject<Ipv4>();
-            //             Ipv4Address chInterIp;
-                        
-            //             // Find the CH's 5GHz IP to act as the Gateway
-            //             for (uint32_t d = 0; d < chNode->GetNDevices(); d++) {
-            //                 Ptr<WifiNetDevice> wDev = DynamicCast<WifiNetDevice>(chNode->GetDevice(d));
-            //                 if (wDev && std::string(wDev->GetMac()->GetSsid().PeekString()).find("InterCluster") != std::string::npos) {
-            //                     int32_t chIdx = chIpv4->GetInterfaceForDevice(wDev);
-            //                     if (chIdx >= 0) {
-            //                         chInterIp = chIpv4->GetAddress(chIdx, 0).GetLocal();
-            //                         break;
-            //                     }
-            //                 }
-            //             }
-            //             if (chInterIp != Ipv4Address::GetZero()) {
-            //                 gdtStatic->AddNetworkRouteTo(clusterSubnet, clusterMask, chInterIp, 1);
-            //             }
-            //         }
-            //     }
-            // }
             std::cout << "\n[TOPOLOGY] Fixed Cluster Heads successfully enforced." << std::endl;
         });
         // Schedule the periodic topology sync to run every 2ms to print the TDMA grid map of each node and verify that the mini-slot allocations are correct and updating as expected based on the traffic profiles.
@@ -519,24 +496,6 @@ namespace ns3
         ApplicationContainer sinkApp = sinkHelper.Install(gcsNode);
         sinkApp.Start(Seconds(0.0));
         sinkApp.Stop(Seconds(this->simDuration));
-
-        // Configure the traffic profiles for the applications based on the JSON configuration.
-        // For simplicity, just set up three types of traffic: Video, Status, and Command, each with different bandwidth requirements and priorities.
-        // The TDMA MAC layer will use the priorities to allocate mini-slots accordingly.
-        // VIDEO: 1.2K High Res -> 1200 bytes, 9.6Kbps | TID 5 (DSCP 0xA0)
-        // OnOffHelper videoApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));
-        // videoApp.SetConstantRate(DataRate("50Kbps"), 1200);
-        // videoApp.SetAttribute("Tos", UintegerValue(0xA0));
-
-        // //STATUS 1: 0.1K -> 100 bytes, 0.8Kbps | TID 4 (DSCP 0x80)
-        // OnOffHelper statusApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));
-        // statusApp.SetConstantRate(DataRate("0.8Kbps"), 100);
-        // statusApp.SetAttribute("Tos", UintegerValue(0x80));
-
-        // //CMD 1: 0.1K -> 100 bytes, 0.8Kbps | TID 6 (DSCP 0xC0)
-        // OnOffHelper cmdApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));
-        // cmdApp.SetConstantRate(DataRate("0.8Kbps"), 100);
-        // cmdApp.SetAttribute("Tos", UintegerValue(0xC0));
 
         // Isntall applications on all the cluster nodes with staggered start times to prevent collisions and ensure the GDT is ready to receive when the apps start sending
         for (size_t i = 0; i < this->fanet->clusters.size(); i++)
@@ -577,25 +536,25 @@ namespace ns3
                 
                 
 
-#define NODE_SENDER 1
+#define NODE_SENDER 8
 // #define TRAFFIC_VIDHIRESAPP
-#define TRAFFIC_GDTAPP
-#define TRAFFIC_VIDAPP
-// #define TRAFFIC_STAAPP
+// #define TRAFFIC_GDTAPP
+// #define TRAFFIC_VIDAPP
+#define TRAFFIC_STAAPP
 
 
 #ifdef TRAFFIC_VIDAPP                
-                OnOffHelper lowResApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));                
+                OnOffHelper lowResApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, this->m_targetPort));                
                 
                 // LOW RES VIDEO [Pri 5 | ToS: 0x50] (Continuous Default)
                 // Ipv4Address chIp = Ipv4Address("10.1.1.1");
                 
-                lowResApp.SetConstantRate(DataRate("48Kbps"), 600);
-                if (nodeId == NODE_SENDER) {
-                    lowResApp.SetConstantRate(DataRate("500Kbps"), 600);
-                } else {
-                    lowResApp.SetConstantRate(DataRate("1bps"), 600); 
-                }
+                lowResApp.SetConstantRate(DataRate("48kbps"), 600);
+                // if (nodeId == NODE_SENDER) {
+                //     lowResApp.SetConstantRate(DataRate("500kbps"), 600);
+                // } else {
+                //     lowResApp.SetConstantRate(DataRate("1bps"), 600); 
+                // }
                 lowResApp.SetAttribute("Local", localSocketAddr);
                 lowResApp.SetAttribute("Tos", UintegerValue(0x50)); 
                 
@@ -606,7 +565,7 @@ namespace ns3
 #endif
 
 #ifdef TRAFFIC_VIDHIRESAPP
-                OnOffHelper highResApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));                
+                OnOffHelper highResApp("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, this->m_targetPort));                
                 // HIGH RES VIDEO [Pri 3 | ToS: 0x30] (Dormant Default, waiting for trigger)
                 
                 highResApp.SetConstantRate(DataRate("1bps"), 1200); // 0bps so it doesn't transmit until commanded
@@ -621,7 +580,7 @@ namespace ns3
 
 #ifdef TRAFFIC_STAAPP
                 // STATUS 1 [Pri 2 | ToS: 0x20] (Continuous Telemetry)
-                OnOffHelper status1App("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));
+                OnOffHelper status1App("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, this->m_targetPort));
                 status1App.SetConstantRate(DataRate("0.8Kbps"), 100);
                 status1App.SetAttribute("Local", localSocketAddr);
                 status1App.SetAttribute("Tos", UintegerValue(0x20));
@@ -634,7 +593,7 @@ namespace ns3
 #endif
                 
 #ifdef TRAFFIC_STA2APP
-                OnOffHelper status2App("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, port));
+                OnOffHelper status2App("ns3::UdpSocketFactory", InetSocketAddress(gcsIp, this->m_targetPort));
                 
                 // STATUS 2 [Pri 1 | ToS: 0x10] (Asynchronous Burst/Alert)
                 
@@ -678,6 +637,8 @@ namespace ns3
                 if (gdtMac)
                 {
                     gdtMac->SetClusterConfig(&m_interClusterConfigs[0]);
+                    gdtMac->SetIsInterCluster(true);
+                    gdtMac->AllocateMiniSlots();
                 }
             }
         }
@@ -692,9 +653,9 @@ namespace ns3
         Ipv4Address gdtLocalIp = gcsNode->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
         AddressValue gdtSocketAddr(InetSocketAddress(gdtLocalIp, 0));
 
-#define TRAFFIC_CMDAPP
-#define TRAFFIC_CMD2APP
-#define TRAFFIC_CMD3APP
+// #define TRAFFIC_CMDAPP
+// #define TRAFFIC_CMD2APP
+// #define TRAFFIC_CMD3APP
 
 #ifdef TRAFFIC_CMDAPP
         // CMD 1 [Pri 3 | ToS: 0x31] (Periodic)
@@ -711,7 +672,7 @@ namespace ns3
 #ifdef TRAFFIC_CMD2APP
           // CMD 2 [Pri 2 | ToS: 0x21] (Periodic)
         OnOffHelper cmd2App("ns3::UdpSocketFactory", InetSocketAddress(targetIp, this->m_targetPort));
-        cmd2App.SetConstantRate(DataRate("2.4Kbps"), 300); 
+        cmd2App.SetConstantRate(DataRate("0.8Kbps"), 300); 
         cmd2App.SetAttribute("Local", gdtSocketAddr);
         cmd2App.SetAttribute("Tos", UintegerValue(0x21));        
 
@@ -725,9 +686,9 @@ namespace ns3
         OnOffHelper cmd3App("ns3::UdpSocketFactory", InetSocketAddress(targetIp, this->m_targetPort));
         cmd3App.SetConstantRate(DataRate("0.8Kbps"), 600); 
         cmd3App.SetAttribute("Local", gdtSocketAddr);
-        cmd3App.SetAttribute("Tos", UintegerValue(0x31));
+        cmd3App.SetAttribute("Tos", UintegerValue(0x11));
 
-        ApplicationContainer c3 = cmd1App.Install(gcsNode);
+        ApplicationContainer c3 = cmd3App.Install(gcsNode);
         c3.Start(Seconds(15.0));
         c3.Stop(Seconds(25.0));
 #endif
@@ -749,9 +710,11 @@ namespace ns3
 
 #ifdef TRAFFIC_GDTAPP
         // Schedule the GDT App to dispatch the command through the Inter-Cluster radio
+        uint16_t commandPort = this->m_targetPort + 1; // Port 10000 for gdt commands
+
         Simulator::Schedule(Seconds(this->m_updateTime + 5.0),
                             &GDTApp::SendCommand,
-                            gdtApp, targetIp, this->m_targetPort, this->m_commandString, gdtInterClusterRadio);
+                            gdtApp, targetIp, commandPort, this->m_commandString, gdtInterClusterRadio);
 #endif
         Simulator::Stop(Seconds(simDuration));
         Simulator::Run();
@@ -1028,12 +991,23 @@ namespace ns3
 
         // Generate the aggregated traffic profiles for the inter-cluster communication
         std::vector<TrafficProfile> aggregatedProfiles;
-        for (const auto &baseProfile : this->m_updateProfiles) // Iterate through the new traffic profiles
+        uint32_t memberCount = (clusterSize > 0) ? clusterSize - 1 : 0;
+        for (const auto &baseProfile : this->m_updateProfiles)
         {
             TrafficProfile clusterDemand = baseProfile;
-            uint32_t memberCount = (clusterSize > 0) ? clusterSize - 1 : 0;
-            clusterDemand.bandwidthKb = (baseProfile.bandwidthKb * memberCount);
-            aggregatedProfiles.push_back(clusterDemand);
+            if (baseProfile.type.find("Video") != std::string::npos ||
+                baseProfile.type.find("Status") != std::string::npos)
+            {
+                clusterDemand.bandwidthKb = (baseProfile.bandwidthKb * memberCount);
+                if (clusterDemand.bandwidthKb > 0)
+                {
+                    aggregatedProfiles.push_back(clusterDemand);
+                }
+            }
+            else if (baseProfile.type.find("Cmd") != std::string::npos)
+            {
+                aggregatedProfiles.push_back(clusterDemand);
+            }
         }
         this->m_interClusterConfigs[targetClusterId].trafficProfiles = aggregatedProfiles;
 
@@ -1070,7 +1044,7 @@ namespace ns3
                         {
                             if (isClusterHead)
                             {
-                                tdmaMac->SetClusterConfig(&m_interClusterConfigs[targetClusterId]);
+                                tdmaMac->SetClusterConfig(&m_interClusterConfigs[targetClusterId]); //push new config
                             }
                             else
                             {
@@ -1081,14 +1055,14 @@ namespace ns3
                         {
                             if (isClusterHead)
                             {
-                                tdmaMac->SetClusterConfig(&m_chIntraConfigs[targetClusterId]);
+                                tdmaMac->SetClusterConfig(&m_chIntraConfigs[targetClusterId]); // push new config
                             }
                             else
                             {
-                                tdmaMac->SetClusterConfig(&m_intraClusterConfigs[targetClusterId]);
+                                tdmaMac->SetClusterConfig(&m_intraClusterConfigs[targetClusterId]); // push new config
                             }
                         }
-                        tdmaMac->AllocateMiniSlots();
+                        tdmaMac->AllocateMiniSlots(); // Force to recalculate the slots
                         PrintTdmaGridMap(clusterNode, wifiDev, tdmaMac);
                     }
                 }
@@ -1107,7 +1081,7 @@ namespace ns3
                     appState.highResVideoApp.Get(0)->SetAttribute("DataRate", StringValue("500Kbps")); 
                 }
                 std::cout << "\n[GDT COMMAND SUCCESS] Node " << rxNodeId 
-                          << " executed HIGH_RES command! Switching video stream to 500Kbps (TID 5)." << std::endl;
+                          << " executed HIGH_RES command! Switching video stream to 500Kbps." << std::endl;
             } else {
                 std::cout << "\n[GDT COMMAND IGNORED] Node " << rxNodeId 
                           << " is a Cluster Head and cannot generate video." << std::endl;
@@ -1164,19 +1138,18 @@ namespace ns3
             uint32_t clusterSize = this->fanet->clusters[i].GetN();
             uint32_t memberCount = (clusterSize > 0) ? clusterSize - 1 : 0;
 
-            // Intra-cluster profiles for CM
-            m_intraClusterConfigs[i].trafficProfiles = profilesToApply;
-
-            // Intra-cluster profiles for CH, relay cmds
-            std::vector<TrafficProfile> chIntraProfiles;
-            for (const auto &p : profilesToApply)
+            // Create one master profile containing all traffic types for local network
+            std::vector<TrafficProfile> fullLocalProfiles;
+            for (const auto &tp : profilesToApply)
             {
-                if (p.type.find("Cmd") != std::string::npos)
-                {
-                    chIntraProfiles.push_back(p);
-                }
+                fullLocalProfiles.push_back(tp);
             }
-            m_chIntraConfigs[i].trafficProfiles = chIntraProfiles;
+            
+            // Intra-cluster profiles for CM
+            m_intraClusterConfigs[i].trafficProfiles = fullLocalProfiles;
+
+            m_chIntraConfigs[i].trafficProfiles = fullLocalProfiles;
+            m_chIntraConfigs[i].kbPerMiniSlot = 1;
 
             // Inter-cluster for CH - relay Video/Status, bas#D
             std::vector<TrafficProfile> aggregatedProfiles;
@@ -1187,13 +1160,11 @@ namespace ns3
                     baseProfile.type.find("Status") != std::string::npos)
                 {
                     clusterDemand.bandwidthKb = (baseProfile.bandwidthKb * memberCount);
-                }
-                else
-                {
-                    clusterDemand.bandwidthKb = baseProfile.bandwidthKb;
-                }
-
-                if (clusterDemand.bandwidthKb > 0)
+                    if (clusterDemand.bandwidthKb > 0)
+                    {
+                        aggregatedProfiles.push_back(clusterDemand);
+                    }
+                } else if (baseProfile.type.find("Cmd") != std::string::npos)
                 {
                     aggregatedProfiles.push_back(clusterDemand);
                 }
@@ -1227,6 +1198,8 @@ namespace ns3
                             appState.videoApp.Get(0)->SetAttribute("DataRate", StringValue("1bps"));
                         if (appState.highResVideoApp.GetN() > 0)
                             appState.highResVideoApp.Get(0)->SetAttribute("DataRate", StringValue("1bps"));
+                        if (appState.statusApp.GetN() > 0)
+                            appState.statusApp.Get(0)->SetAttribute("DataRate", StringValue("1bps"));
                     }
                 }
 
@@ -1267,6 +1240,7 @@ namespace ns3
                                 if (isClusterHead)
                                 {
                                     // CH Local, get Cmd only profiles
+                                    tdmaMac->SetClusterConfig(&m_chIntraConfigs.at(i));
                                 }
                                 else
                                 {
@@ -1290,8 +1264,11 @@ namespace ns3
                 Ptr<TdmaWifiMac> gdtMac = DynamicCast<TdmaWifiMac>(gdtWifi->GetMac());
                 if (gdtMac)
                 {
+                    gdtMac->SetIsInterCluster(true);
                     gdtMac->SetClusterConfig(&m_interClusterConfigs[0]);
                     gdtMac->AllocateMiniSlots();
+                    PrintTdmaGridMap(syncGcsNode, gdtWifi, gdtMac);
+
                 }
             }
         }
@@ -1353,29 +1330,30 @@ namespace ns3
             }
         }
 
+        bool isGdt = (nodeId == this->fanet->GDTNode.Get(0)->GetId());
         bool isInterCluster = (ssid.find("InterCluster") != std::string::npos);
-        bool isDormant = isInterCluster && !isClusterHead;
+        bool isDormant = isInterCluster && !isClusterHead && !isGdt;
+        std::string intraEthState = "N/A";
+        std::string interEthState = "N/A";
+
+        if (ipv4) {
+            // Check if Interface 1 (InterCluster) exists before asking if it's UP
+            if (ipv4->GetNInterfaces() > 1) {
+                interEthState = ipv4->IsUp(1) ? "UP" : "DOWN";
+            }
+            // Check if Interface 2 (IntraCluster) exists before asking if it's UP
+            if (ipv4->GetNInterfaces() > 2) {
+                intraEthState = ipv4->IsUp(2) ? "UP" : "DOWN";
+            }
+        }
 
         // Build Header String
         std::stringstream headerSs;
-        // if (isDormant)
-        // {
-        //     headerSs << "[TDMA HARDWARE STATE CHANGE]  Node: " << nodeId
-        //              << "  |  IP: " << ipAddr
-        //              << "  |  MAC: " << macAddr
-        //              << "  |  SSID: " << ssid << " | Sim Time: " << simTime;
-        // }
-        // else
-        // {
-        //     headerSs << "[TDMA HARDWARE STATE CHANGE]  Node: " << nodeId
-        //              << "  |  IP: " << ipAddr
-        //              << "  |  MAC: " << macAddr
-        //              << "  |  SSID: " << ssid << "  | Sim Time: " << simTime;
-        // }
+
         headerSs 
             << "[TDMA HARDWARE STATE CHANGE]  Node: " << nodeId
-            << "  |  InterEth: " << std::string(ipv4->IsUp(1) ? "UP" : "DOWN")
-            << "  |  IntraEth: " << std::string(ipv4->IsUp(2) ? "UP" : "DOWN")
+            << "  |  IntraEth: " << intraEthState
+            << "  |  InterEth: " << interEthState
             << "  |  IP: " << ipAddr
             << "  |  MAC: " << macAddr
             << "  |  SSID: " << ssid 
@@ -1384,7 +1362,7 @@ namespace ns3
 
         // Build Grid Map Row
         std::stringstream gridSs;
-        gridSs << "GRID MAP | ";
+        gridSs << "SLOT USAGE    | ";
 
         if (isDormant)
         {
@@ -1392,35 +1370,56 @@ namespace ns3
         }
         else
         {
-            // Check if we should print 24 slots or 12 slots
-            uint32_t slotsToPrint = isInterCluster ? 24 : 12;
-            for (uint32_t i = 0; i < slotsToPrint; i++)
+            bool hasActiveSlots = false;
+            for (uint32_t i = 0; i < 72; i++)
             {
-                std::string slotName = tdmaMac->GetSlotTrafficType(i);
+                std::string schedSlot = tdmaMac->GetSlotTrafficType(i);
+                std::string actualSlot = tdmaMac->GetSlotHistory(i);
+                
+                // Only print if the slot is scheduled to exist, OR if something transmitted in it
+                if (schedSlot != "IDLE" || actualSlot != "IDLE") 
+                {
+                    hasActiveSlots = true;
+                    gridSs << "[T=" << i << ": ";
+                    
+                    // Format the Scheduled String
+                    std::string schedStr = schedSlot;
+                    if (schedStr == "Status1") schedStr = "STA1";
+                    else if (schedStr == "Status2") schedStr = "STA2";
+                    else if (schedStr == "Cmd1") schedStr = "CMD1";
+                    else if (schedStr == "Cmd2") schedStr = "CMD2";
+                    else if (schedStr == "Cmd3") schedStr = "CMD3";
+                    else if (schedStr == "Video_LOW_RES") schedStr = "V-LOW";
+                    else if (schedStr == "Video_HIGH_RES") schedStr = "V-HI";
+                    else if (schedStr == "IDLE") schedStr = "IDLE";
+                    
+                    // Format the Actual Sent String
+                    std::string actStr = actualSlot;
+                    if (actStr == "IDLE") actStr = "IDLE";
+                    else if (actStr.find("Status1") != std::string::npos) actStr = "STA1";
+                    else if (actStr.find("Status2") != std::string::npos) actStr = "STA2*";
+                    else if (actStr.find("Cmd1") != std::string::npos) actStr = "CMD1";
+                    else if (actStr.find("Cmd2") != std::string::npos) actStr = "CMD2*";
+                    else if (actStr.find("Cmd3") != std::string::npos) actStr = "CMD3*";
+                    else if (actStr.find("Video_LOW_RES") != std::string::npos) actStr = "V-LOW";
+                    else if (actStr.find("Video_HIGH_RES") != std::string::npos) actStr = "V-HI*";
 
-                if (slotName == "Status1")
-                    gridSs << "[STA1] ";
-                else if (slotName == "Status2")
-                    gridSs << "[STA2] ";
-                else if (slotName == "Cmd1")
-                    gridSs << "[CMD1] ";
-                else if (slotName == "Cmd2")
-                    gridSs << "[CMD2] ";
-                else if (slotName == "Cmd3")
-                    gridSs << "[CMD3] ";
-                else if (slotName == "Video_LOW_RES")
-                    gridSs << "[V-LOW] ";
-                else if (slotName == "Video_HIGH_RES")
-                    gridSs << "[V-HI] ";
-                else
-                    gridSs << "[IDLE] ";
+                    if (schedStr == actStr) {
+                        gridSs << schedStr << "] "; 
+                    } else {
+                        gridSs << schedStr << " -> " << actStr << "] "; 
+                    }
+                }
+            }
+            if (!hasActiveSlots) {
+                gridSs << "[ --- NO ACTIVE TDMA SLOTS ALLOCATED --- ]";
             }
         }
         std::string gridContent = gridSs.str();
 
+        // Render the clean 2-row terminal box
         size_t internalWidth = std::max(headerContent.length(), gridContent.length()) + 2;
 
-        // Render box
         std::cout << "+" << std::string(internalWidth, '-') << "+" << std::endl;
         std::cout << "| " << headerContent << std::string(internalWidth - headerContent.length() - 1, ' ') << "|" << std::endl;
         std::cout << "+" << std::string(internalWidth, '-') << "+" << std::endl;
@@ -1428,14 +1427,12 @@ namespace ns3
         std::cout << "+" << std::string(internalWidth, '-') << "+" << std::endl;
         std::cout << std::endl;
 
+        // Print Queue sizes if it's a Cluster Head
         if (isClusterHead && !tdmaMac->GetNodeQueueSizes().empty())
         {
             std::cout << "[D-TDMA STATUS] ";
-
-            // CHANGE THIS LOOP:
             for (auto const &pair : tdmaMac->GetNodeQueueSizes())
             {
-                // Access via pair.first (the MAC address) and pair.second (the size)
                 std::cout << "Node " << pair.first << " Q=" << pair.second << " | ";
             }
             std::cout << std::endl;

@@ -306,9 +306,9 @@ namespace ns3
                                             std::deque<ClusterMacConfig>& intraConfigs, 
                                             std::deque<ClusterMacConfig>& interConfigs) 
     {
-        for (size_t i = 0; i < fanet->clusters.size(); ++i) 
+        for (size_t i = 0; i < fanet->clusters.size(); ++i)
         {
-            for (uint32_t j = 0; j < fanet->clusters[i].GetN(); ++j) 
+            for (uint32_t j = 0; j < fanet->clusters[i].GetN(); ++j)
             {
                 Ptr<Node> node = fanet->clusters[i].Get(j);
                 

@@ -24,6 +24,7 @@ namespace ns3
     {
         bool isOccupied; // Indicates if the mini-slot is occupied
         std::string trafficType; // Type of traffic assigned to this mini-slot (e.g., "video", "audio", "data")
+        uint32_t ownerNodeId; // ID of the node that owns this mini-slot
     };
 
     struct TrafficProfile 
@@ -57,6 +58,8 @@ namespace ns3
             void AllocateMiniSlots();
 
             std::string GetSlotTrafficType(uint32_t slotId) const;  
+            std::string GetSlotHistory(uint32_t slotId) const;
+
 
             // Function to set the cluster configuration, which includes traffic profiles and mini-slot allocation 
             //(to wire up the reference from the JSON data to the MAC layer))
@@ -75,6 +78,7 @@ namespace ns3
             void UpdateSlotDuration();
             void Receive(Ptr<const WifiMpdu> mpdu, uint8_t linkId) override;
             void DoCompleteConfig() override;
+            void TdmaTransmit(std::string scheduledTraffic);
         
             std::string m_name;
             uint32_t m_numSlots;          // Total number of TDMA slots (equal to the number of nodes)
@@ -93,7 +97,8 @@ namespace ns3
 
             std::vector<MiniSlot> m_allocationTable;
             std::map<Mac48Address, std::queue<TdmaBufferItem>> m_nodeQueues; // Map of node MAC addresses to their respective queues
-            std::map<Mac48Address, uint16_t> m_nodeQueueSizes; // Map to track the latest queue size for each node (keyed by MAC address)   
+            std::map<Mac48Address, uint16_t> m_nodeQueueSizes; // Map to track the latest queue size for each node (keyed by MAC address)  
+            std::vector<std::string> m_slotHistory;
 
             //MAC-Level WFQ Queues
             std::queue<TdmaBufferItem> m_pri1_status2Queue;
@@ -105,9 +110,7 @@ namespace ns3
             std::queue<TdmaBufferItem> m_pri3_cmd1Queue;
 
             //Leaky Bucket Limits (Max packets allowed to wait)
-            uint32_t m_maxVideoQueueSize = 50;
-            uint32_t m_maxStatusQueueSize = 50;
-            uint32_t m_maxCmdQueueSize = 50;    
+            uint32_t m_maxQueueSize = 500;
             
             // Map to track the latest queue size for each neighbour node (keyed by MAC address) 
             std::map<Mac48Address, uint16_t> m_neighbourQueueSizes;  

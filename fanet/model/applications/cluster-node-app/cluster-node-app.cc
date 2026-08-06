@@ -34,8 +34,9 @@ namespace ns3
 
     void ClusterNodeApp::StartApplication()
     {
-
-        //NS_LOG_DEBUG("Node " << GetNode()->GetId() << " application to notify gdt that it became clusterhead started");
+        uint16_t commandPort = 10000; 
+        SetupCommandSocket(commandPort);
+        NS_LOG_DEBUG("Node " << GetNode()->GetId() << " application to notify gdt that it became clusterhead started");
     }
 
     void ClusterNodeApp::StopApplication()
