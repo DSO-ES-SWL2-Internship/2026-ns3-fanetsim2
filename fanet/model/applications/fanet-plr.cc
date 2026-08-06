@@ -5,7 +5,7 @@
 #include <cstring>
 #include "ns3/gdt-app.h"
 #include "ns3/cluster-node-app.h"
-
+#include "ns3/ipv4.h"
 
 namespace ns3
 {

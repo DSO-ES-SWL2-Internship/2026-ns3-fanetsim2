@@ -1,5 +1,11 @@
 #include "FANETMobilityHelper.h"
-#include "ns3/core-module.h"
+#include "FANETMobilityHelper.h"
+#include "ns3/log.h"
+#include "ns3/double.h"
+#include "ns3/string.h"
+#include "ns3/rectangle.h"
+#include "ns3/vector.h"
+#include "ns3/random-variable-stream.h"
 
 namespace ns3
 {

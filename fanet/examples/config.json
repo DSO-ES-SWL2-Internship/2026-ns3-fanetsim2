@@ -1,48 +1,59 @@
 {
-    "nClusters": 3,
-    "nClusterNodes": "3 3 3",
+    "nClusters": 2,
+    "nClusterNodes": "4 4",
     "cycleDuration": 200,
     "filename": "hello.xml",
-    "simulationDuration": 30.0,
+    "simulationDuration": 40.0,
+    "initialClusterHeads": [2, 6],
     "fanetDevices": {
-      "clusterWifiStandard": "WIFI_STANDARD_80211b",
+      "clusterWifiStandard": "WIFI_STANDARD_80211n",
       "clusterWifiChannelPropagationDelay": "ns3::ConstantSpeedPropagationDelayModel",
       "clusterPropagationLossModel": "ns3::FriisPropagationLossModel",
       "clusterMacType": "ns3::TdmaWifiMac",
-      "linkWifiStandard": "WIFI_STANDARD_80211b",
+      "linkWifiStandard": "WIFI_STANDARD_80211n",
       "linkWifiChannelPropagationDelay": "ns3::ConstantSpeedPropagationDelayModel",
       "linkPropagationLossModel": "ns3::FriisPropagationLossModel",
       "linkMacType": "ns3::TdmaWifiMac"
     },
 
     "trafficProfiles": [
-        {"type": "Status1", "priority": 2, "bandwidthKb": 0.1},
-        {"type": "Cmd1", "priority": 3, "bandwidthKb": 0.1},
-        {"type": "Video_LOW_RES", "priority": 5, "bandwidthKb": 0.6}
+        {"type": "Status1", "priority": 2, "bandwidthKb": 1},
+        {"type": "Cmd1", "priority": 3, "bandwidthKb": 1},
+        {"type": "Video_LOW_RES", "priority": 5, "bandwidthKb": 6}
     ],
 
     "updateProfiles": [ 
         {
-          "startTime": 15.0,
-          "endTime": 19.0,
+          "startTime": 5.0,
+          "endTime": 9.0,
+          "newClusterHeads": [2, 6],
           "profiles":
           [
-              {"type": "Status2", "priority": 1, "bandwidthKb": 0.3},
-              {"type": "Cmd2", "priority": 2, "bandwidthKb": 0.3},
-              {"type": "Video_HIGH_RES", "priority": 3, "bandwidthKb": 1.2}
+              {"type": "Status1", "priority": 2, "bandwidthKb": 1},
+              {"type": "Cmd1", "priority": 3, "bandwidthKb": 1},
+              {"type": "Video_LOW_RES", "priority": 5, "bandwidthKb": 6}
           ]
         },
         {
-          "startTime": 20.0,
-          "endTime": 25.0,
+          "startTime": 11.0,
+          "endTime": 20.0,
+          "newClusterHeads": [2, 6],
           "profiles":
-            [
-                {"type": "Status2", "priority": 1, "bandwidthKb": 0.3},
-                {"type": "Cmd3", "priority": 1, "bandwidthKb": 0.6},
-                {"type": "Video_HIGH_RES", "priority": 3, "bandwidthKb": 1.2}
-            ]
+          [
+              {"type": "Status1", "priority": 2, "bandwidthKb": 1},
+              {"type": "Cmd2", "priority": 2, "bandwidthKb": 3},
+              {"type": "Cmd3", "priority": 1, "bandwidthKb": 6},
+              {"type": "Video_HIGH_RES", "priority": 3, "bandwidthKb": 12}
+          ]
         }
     ],
+
+    "gdtCommandConfig": {
+        "targetClusterIndex": 1,
+        "targetNodeIndex": 3,
+        "targetPort": 9999,
+        "commandString": "HIGH_RES"
+    },
 
     "router": {
       "routingProtocol": "AODV"
